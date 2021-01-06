@@ -77,8 +77,8 @@ import org.threeten.bp.OffsetDateTime;
 import org.threeten.bp.temporal.ChronoField;
 
 /**
- * Example code for using the Cloud Spanner API. This example demonstrates all the common operations
- * that can be done on Cloud Spanner. These are:
+ * Example code for using the Cloud Spanner API with the emulator. This example demonstrates all the common operations
+ * that can be done on the Cloud Spanner Emulator. These are:
  *
  * <p>
  *
@@ -88,8 +88,6 @@ import org.threeten.bp.temporal.ChronoField;
  *   <li>Writing data using a read-write transaction.
  *   <li>Using an index to read and execute SQL queries over data.
  *   <li>Using commit timestamp for tracking when a record was last updated.
- *   <li>Using Google API Extensions for Java to make thread-safe requests via long-running
- *       operations. http://googleapis.github.io/gax-java/
  * </ul>
  */
 public class SpannerSample {
