@@ -7,7 +7,8 @@ Quickstart guide:
 3. Run the Spanner samples:  
   java -jar java-samples-1.0-SNAPSHOT.jar \<operation\> \<instance\> \<database\>
 
-List of Sample Operations (\<operation\> \<instance\> \<database\>):
+List of Sample Operations (\<operation\> \<instance\> \<database\>):  
+```
     createdatabase my-instance example-db  
     write my-instance example-db  
     delete my-instance example-db  
@@ -60,4 +61,5 @@ List of Sample Operations (\<operation\> \<instance\> \<database\>):
     querywithtimestampparameter my-instance example-db  
     clientwithqueryoptions my-instance example-db  
     querywithqueryoptions my-instance example-db  
+```
 
