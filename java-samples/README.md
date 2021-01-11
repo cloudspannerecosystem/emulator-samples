@@ -6,6 +6,13 @@
   docker run -p 9010:9010 --rm -it \<image\>
 3. Run the Spanner samples:  
   java -jar java-samples-1.0-SNAPSHOT.jar \<operation\> \<instance\> \<database\>
+  
+## Notes:
+  - Default project: "test-project"
+  - Default instance: "test-instance"
+  - Default database: "test-database"
+  - The docker image will create the above instance and database by default. This can be changed by editing the 
+    start_emulator_with_instance_and_database.sh file.
 
 ## List of Sample Operations (\<operation\> \<instance\> \<database\>):  
 ```
