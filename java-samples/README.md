@@ -1,4 +1,4 @@
-Quickstart guide:
+# Quickstart guide:
 
 1. Set the emulator host environment variable:  
   export SPANNER_EMULATOR_HOST=localhost:9010
@@ -7,7 +7,7 @@ Quickstart guide:
 3. Run the Spanner samples:  
   java -jar java-samples-1.0-SNAPSHOT.jar \<operation\> \<instance\> \<database\>
 
-List of Sample Operations (\<operation\> \<instance\> \<database\>):  
+## List of Sample Operations (\<operation\> \<instance\> \<database\>):  
 ```
     createdatabase my-instance example-db  
     write my-instance example-db  
