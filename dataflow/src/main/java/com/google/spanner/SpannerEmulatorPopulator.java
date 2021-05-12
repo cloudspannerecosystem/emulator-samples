@@ -1,7 +1,22 @@
+/*
+ * Copyright (C) 2021 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
 package com.google.spanner;
 
 import com.google.api.gax.longrunning.OperationFuture;
-import com.google.cloud.NoCredentials;
 import com.google.cloud.spanner.Database;
 import com.google.cloud.spanner.DatabaseAdminClient;
 import com.google.cloud.spanner.Mutation;
@@ -35,19 +50,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * SpannerEmulatorPopulator is a test program that uses Dataflow to read and write to a Cloud Spanner
- * database. It can also be used to create an initial database for export. Invoke as follows:
+ * SpannerEmulatorPopulator is a test program that uses Dataflow to read and write to a Cloud
+ * Spanner Emulator database. It can also be used to create an initial database for export. Invoke
+ * as follows:
  * <code>
  * mvn compile exec:java -Dexec.mainClass=com.google.spanner.SpannerEmulatorPopulator -Dexec.args="
- * --projectId=span-cloud-testing --endpoint=http://localhost:9010 --instanceId=test-instance --createDatabase=false --databaseIdPrefix=db-
- *  --databaseUniqueId=inbound --table=users10m --numRecords=100000 --numberOfImportWorkers=1
+ * --projectId=test-project --endpoint=http://localhost:9010 --instanceId=test-instance --createDatabase=true --databaseIdPrefix=db-
+ *  --databaseUniqueId=inbound --table=users --numRecords=100000 --numberOfImportWorkers=1
  *  --numWorkers=1 --maxNumWorkers=1 --runner=DirectRunner"
  * </code>
  *
- * The SPANNER_EMULATOR_HOST environment variable must be set to the emulator address and port
- * (default: http://localhost:9010).
+ * The SPANNER_EMULATOR_HOST environment variable must be set to the emulator address and
+ * port (default: http://localhost:9010).
  *
- * <p>The number of dataflow workers should be kept at 1 to avoid excessive transaction aborts,
+ * The number of workers should be kept at 1 to avoid excessive transaction aborts,
  * since the emulator uses a simpler concurrency model with database wide locking.
  */
 class SpannerEmulatorPopulator {
@@ -57,6 +73,7 @@ class SpannerEmulatorPopulator {
     @Description("Project ID for Spanner")
     @Default.String("test-project")
     String getProjectId();
+
     void setProjectId(String value);
 
     // Cloud spanner emulator should be listening on port 9010.
@@ -72,71 +89,84 @@ class SpannerEmulatorPopulator {
     @Validation.Required
     @Default.Long(1000)
     Long getNumRecords();
+
     void setNumRecords(Long numRecords);
 
     @Description("Create a new database")
     @Default.Boolean(false)
     boolean isCreateDatabase();
+
     void setCreateDatabase(boolean createDatabase);
 
     @Description("Drop the newly created database")
     @Default.Boolean(false)
     boolean isDropDatabase();
+
     void setDropDatabase(boolean dropDatabase);
 
     @Description("Run import test")
     @Default.Boolean(true)
     boolean isRunImport();
+
     void setRunImport(boolean runImport);
 
     @Description("Run export test")
     @Default.Boolean(false)
     boolean isRunExport();
+
     void setRunExport(boolean runExport);
 
     @Description("Instance ID to write to in Spanner")
     @Validation.Required
     @Default.String("")
     String getInstanceId();
+
     void setInstanceId(String value);
 
     @Description("Database prefix to write to in Spanner")
     @Validation.Required
     @Default.String("testdb")
     String getDatabaseIdPrefix();
+
     void setDatabaseIdPrefix(String databaseIdPrefix);
 
     @Description("Database unique ID to write to in Spanner")
     @Validation.Required
     @Default.String("1234567890abcdef")
     String getDatabaseUniqueId();
+
     void setDatabaseUniqueId(String databaseUniqueId);
 
     @Description("Table name")
     @Validation.Required
     @Default.String("users")
     String getTable();
+
     void setTable(String value);
 
     @Description("Number of fields in the mutation table")
     @Default.Integer(10)
     Integer getNumberOfFields();
+
     void setNumberOfFields(Integer numberOfShards);
 
     @Description("Size of the field in bytes")
     @Default.Integer(100)
     Integer getFieldSize();
+
     void setFieldSize(Integer fieldSize);
 
     @Description("Number of dataflow workers for import")
     @Default.Integer(10)
     Integer getNumberOfImportWorkers();
+
     void setNumberOfImportWorkers(Integer numberOfImportWorkers);
   }
 
   private static String getDatabaseSchema(SpannerPipelineOptions options) {
-    StringBuilder ddl = new StringBuilder(
-        String.format("CREATE TABLE %s (  Key           INT64,", options.getTable()));
+    StringBuilder ddl =
+        new StringBuilder(
+            String.format("CREATE TABLE %s (  Key           INT64,", options.getTable()));
     for (int i = 0; i < options.getNumberOfFields(); i++) {
       ddl.append("  field").append(i).append(" STRING(MAX),");
     }
@@ -176,9 +206,9 @@ class SpannerEmulatorPopulator {
     }
 
     String ddl = getDatabaseSchema(options);
-    OperationFuture<Database, CreateDatabaseMetadata> op = databaseAdminClient
-        .createDatabase(options.getInstanceId(), getDatabaseId(options),
-            Collections.singleton(ddl));
+    OperationFuture<Database, CreateDatabaseMetadata> op =
+        databaseAdminClient.createDatabase(
+            options.getInstanceId(), getDatabaseId(options), Collections.singleton(ddl));
     op.get();
     client.close();
   }
@@ -249,7 +279,9 @@ class SpannerEmulatorPopulator {
     if (!options.getEndpoint().isEmpty()) {
       config = config.withEmulatorHost(StaticValueProvider.of(options.getEndpoint()));
     }
-    return config.withProjectId(options.getProjectId()).withInstanceId(options.getInstanceId())
+    return config
+        .withProjectId(options.getProjectId())
+        .withInstanceId(options.getInstanceId())
         .withDatabaseId(getDatabaseId(options));
   }
 
@@ -265,9 +297,7 @@ class SpannerEmulatorPopulator {
     PCollection<Integer> shards =
         p.apply(
             Create.of(
-                ContiguousSet.create(
-                    Range.closedOpen(0, numShards),
-                    DiscreteDomain.integers())));
+                ContiguousSet.create(Range.closedOpen(0, numShards), DiscreteDomain.integers())));
 
     PCollection<Mutation> mutations =
         shards.apply(
@@ -286,9 +316,11 @@ class SpannerEmulatorPopulator {
   private static void runExport(SpannerPipelineOptions options) {
     LOG.info("Running Export Test.");
     Pipeline p = Pipeline.create(options);
-    PCollection<Struct> rows = p.apply(SpannerIO.read()
-        .withSpannerConfig(getSpannerConfig(options))
-        .withQuery("SELECT * FROM " + options.getTable()));
+    PCollection<Struct> rows =
+        p.apply(
+            SpannerIO.read()
+                .withSpannerConfig(getSpannerConfig(options))
+                .withQuery("SELECT * FROM " + options.getTable()));
 
     PCollection<Long> count = rows.apply("Count", Count.globally());
 
@@ -303,8 +335,8 @@ class SpannerEmulatorPopulator {
 
   public static void main(String[] args) throws ExecutionException, InterruptedException {
 
-    SpannerPipelineOptions options = PipelineOptionsFactory.fromArgs(args).withValidation()
-        .as(SpannerPipelineOptions.class);
+    SpannerPipelineOptions options =
+        PipelineOptionsFactory.fromArgs(args).withValidation().as(SpannerPipelineOptions.class);
 
     if (options.isRunImport()) {
       runImport(options);
