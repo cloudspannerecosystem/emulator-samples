@@ -28,10 +28,22 @@ import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.DiscreteDomain;
 import com.google.common.collect.Range;
 import com.google.spanner.admin.database.v1.CreateDatabaseMetadata;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.nio.channels.Channels;
+import java.nio.channels.WritableByteChannel;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import org.apache.beam.sdk.Pipeline;
+import org.apache.beam.sdk.io.FileIO;
 import org.apache.beam.sdk.io.gcp.spanner.SpannerConfig;
 import org.apache.beam.sdk.io.gcp.spanner.SpannerIO;
 import org.apache.beam.sdk.options.Default;
@@ -40,12 +52,16 @@ import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.Validation;
 import org.apache.beam.sdk.options.ValueProvider.StaticValueProvider;
-import org.apache.beam.sdk.testing.PAssert;
-import org.apache.beam.sdk.transforms.Count;
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TypeDescriptors;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Joiner;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,15 +72,14 @@ import org.slf4j.LoggerFactory;
  * <code>
  * mvn compile exec:java -Dexec.mainClass=com.google.spanner.SpannerEmulatorPopulator -Dexec.args="
  * --projectId=test-project --endpoint=http://localhost:9010 --instanceId=test-instance --createDatabase=true --databaseIdPrefix=db-
- *  --databaseUniqueId=inbound --table=users --numRecords=100000 --numberOfImportWorkers=1
- *  --numWorkers=1 --maxNumWorkers=1 --runner=DirectRunner"
+ *  --databaseUniqueId=inbound --table=users --runImport=true --runExport=true --numRecords=100000 --numWorkers=1
+ *  --maxNumWorkers=1 --runner=DirectRunner"
  * </code>
- *
  * The SPANNER_EMULATOR_HOST environment variable must be set to the emulator address and
  * port (default: http://localhost:9010).
  *
- * The number of workers should be kept at 1 to avoid excessive transaction aborts,
- * since the emulator uses a simpler concurrency model with database wide locking.
+ * The number of workers should be kept at 1 to avoid excessive transaction aborts, since the
+ * emulator uses a simpler concurrency model with database wide locking.
  */
 class SpannerEmulatorPopulator {
   private static final Logger LOG = LoggerFactory.getLogger(SpannerEmulatorPopulator.class);
@@ -73,14 +88,12 @@ class SpannerEmulatorPopulator {
     @Description("Project ID for Spanner")
     @Default.String("test-project")
     String getProjectId();
-
     void setProjectId(String value);
 
     // Cloud spanner emulator should be listening on port 9010.
     @Description("Spanner emulator endpoint")
     @Default.String("http://localhost:9010")
     String getEndpoint();
-
     void setEndpoint(String value);
 
     // 1B rows creates a 1 TB database
@@ -89,77 +102,70 @@ class SpannerEmulatorPopulator {
     @Validation.Required
     @Default.Long(1000)
     Long getNumRecords();
-
     void setNumRecords(Long numRecords);
 
     @Description("Create a new database")
     @Default.Boolean(false)
     boolean isCreateDatabase();
-
     void setCreateDatabase(boolean createDatabase);
 
     @Description("Drop the newly created database")
     @Default.Boolean(false)
     boolean isDropDatabase();
-
     void setDropDatabase(boolean dropDatabase);
 
     @Description("Run import test")
-    @Default.Boolean(true)
+    @Default.Boolean(false)
     boolean isRunImport();
-
     void setRunImport(boolean runImport);
 
     @Description("Run export test")
     @Default.Boolean(false)
     boolean isRunExport();
-
     void setRunExport(boolean runExport);
+
+    @Description("CSV file to read from for import")
+    @Default.String("")
+    String getCsvImportFile();
+    void setCsvImportFile(String csvImportFile);
 
     @Description("Instance ID to write to in Spanner")
     @Validation.Required
     @Default.String("")
     String getInstanceId();
-
     void setInstanceId(String value);
 
     @Description("Database prefix to write to in Spanner")
     @Validation.Required
     @Default.String("testdb")
     String getDatabaseIdPrefix();
-
     void setDatabaseIdPrefix(String databaseIdPrefix);
 
     @Description("Database unique ID to write to in Spanner")
     @Validation.Required
     @Default.String("1234567890abcdef")
     String getDatabaseUniqueId();
-
     void setDatabaseUniqueId(String databaseUniqueId);
 
     @Description("Table name")
     @Validation.Required
     @Default.String("users")
     String getTable();
-
     void setTable(String value);
 
     @Description("Number of fields in the mutation table")
-    @Default.Integer(10)
+    @Default.Integer(3)
     Integer getNumberOfFields();
-
-    void setNumberOfFields(Integer numberOfShards);
+    void setNumberOfFields(Integer numberOfFields);
 
     @Description("Size of the field in bytes")
     @Default.Integer(100)
     Integer getFieldSize();
-
     void setFieldSize(Integer fieldSize);
 
     @Description("Number of dataflow workers for import")
-    @Default.Integer(10)
+    @Default.Integer(1)
     Integer getNumberOfImportWorkers();
-
     void setNumberOfImportWorkers(Integer numberOfImportWorkers);
   }
 
@@ -167,6 +173,7 @@ class SpannerEmulatorPopulator {
     StringBuilder ddl =
         new StringBuilder(
             String.format("CREATE TABLE %s (  Key           INT64,", options.getTable()));
+    // 3 non-key fields.
     for (int i = 0; i < options.getNumberOfFields(); i++) {
       ddl.append("  field").append(i).append(" STRING(MAX),");
     }
@@ -254,13 +261,8 @@ class SpannerEmulatorPopulator {
 
     @ProcessElement
     public void processElement(ProcessContext c) {
-      Integer shard = c.element();
-      long numElements = numMutations / numShards;
-      long start = shard * numElements;
-
-      // The last shard extends to numMutations, to avoid generating too few rows when numElements
-      // is truncated:
-      long end = shard == numShards - 1 ? numMutations : start + numElements;
+      long start = 0;
+      long end = numMutations;
 
       for (long k = start; k < end; k++) {
         Mutation.WriteBuilder builder = Mutation.newInsertOrUpdateBuilder(table);
@@ -274,6 +276,53 @@ class SpannerEmulatorPopulator {
     }
   }
 
+  private static class GenerateMutationsFromFile extends DoFn<Integer, Mutation> {
+    private final String table;
+    private final long numMutations;
+    private final int numFields;
+    private List<List<String>> records;
+
+    public GenerateMutationsFromFile(String table, int numFields, List<List<String>> records) {
+      this.table = table;
+      this.numFields = numFields;
+      this.records = records;
+      this.numMutations = records.size();
+    }
+
+    @ProcessElement
+    public void processElement(ProcessContext c) {
+      long start = 0;
+      long end = numMutations;
+
+      for (long k = start; k < end; k++) {
+        Mutation.WriteBuilder builder = Mutation.newInsertOrUpdateBuilder(table);
+        builder.set("Key").to(records.get((int) k).get(0));
+        for (int field = 0; field < numFields; field++) {
+          builder.set("Field" + field).to(records.get((int) k).get(field + 1));
+        }
+        Mutation mutation = builder.build();
+        c.output(mutation);
+      }
+    }
+  }
+
+  private static List<List<String>> readCsvFile(String file, int numColumns) throws IOException {
+    Path path = FileSystems.getDefault().getPath("./", file);
+    Reader reader = Files.newBufferedReader(path);
+    CSVParser parser = new CSVParser(reader, CSVFormat.DEFAULT);
+    List<CSVRecord> records = parser.getRecords();
+
+    List<List<String>> entries = new ArrayList<>();
+    for (CSVRecord record : records) {
+      List<String> row = new ArrayList<>();
+      for (int i = 0; i < numColumns; ++i) {
+        row.add(record.get(i));
+      }
+      entries.add(row);
+    }
+    return entries;
+  }
+
   private static SpannerConfig getSpannerConfig(SpannerPipelineOptions options) {
     SpannerConfig config = SpannerConfig.create();
     if (!options.getEndpoint().isEmpty()) {
@@ -285,29 +334,63 @@ class SpannerEmulatorPopulator {
         .withDatabaseId(getDatabaseId(options));
   }
 
+  private static class CSVSink implements FileIO.Sink<List<String>> {
+    private String header;
+    private PrintWriter writer;
+
+    public CSVSink(List<String> colNames) {
+      this.header = Joiner.on(",").join(colNames);
+    }
+
+    public void open(WritableByteChannel channel) throws IOException {
+      writer = new PrintWriter(Channels.newOutputStream(channel));
+      writer.println(header);
+    }
+
+    public void write(List<String> element) throws IOException {
+      writer.println(Joiner.on(",").join(element));
+    }
+
+    public void flush() throws IOException {
+      writer.flush();
+    }
+  }
+
   private static void runImport(SpannerPipelineOptions options)
-      throws ExecutionException, InterruptedException {
+      throws ExecutionException, InterruptedException, IOException {
     LOG.info("Running Import Test.");
     if (options.isCreateDatabase()) {
       createDatabase(options);
     }
 
-    Integer numShards = options.getNumberOfImportWorkers();
     Pipeline p = Pipeline.create(options);
+    Integer numShards = options.getNumberOfImportWorkers();
     PCollection<Integer> shards =
         p.apply(
             Create.of(
                 ContiguousSet.create(Range.closedOpen(0, numShards), DiscreteDomain.integers())));
 
-    PCollection<Mutation> mutations =
-        shards.apply(
-            ParDo.of(
-                new GenerateMutations(
-                    options.getTable(),
-                    options.getNumRecords(),
-                    options.getNumberOfFields(),
-                    options.getFieldSize(),
-                    numShards)));
+    PCollection<Mutation> mutations;
+    if (!options.getCsvImportFile().isEmpty()) {
+      // Add extra column for key column.
+      List<List<String>> records =
+          readCsvFile(options.getCsvImportFile(), options.getNumberOfFields() + 1);
+      mutations =
+          shards.apply(
+              ParDo.of(
+                  new GenerateMutationsFromFile(
+                      options.getTable(), options.getNumberOfFields(), records)));
+    } else {
+      mutations =
+          shards.apply(
+              ParDo.of(
+                  new GenerateMutations(
+                      options.getTable(),
+                      options.getNumRecords(),
+                      options.getNumberOfFields(),
+                      options.getFieldSize(),
+                      numShards)));
+    }
 
     mutations.apply(SpannerIO.write().withSpannerConfig(getSpannerConfig(options)));
     p.run().waitUntilFinish();
@@ -322,9 +405,15 @@ class SpannerEmulatorPopulator {
                 .withSpannerConfig(getSpannerConfig(options))
                 .withQuery("SELECT * FROM " + options.getTable()));
 
-    PCollection<Long> count = rows.apply("Count", Count.globally());
-
-    PAssert.thatSingleton(count).isEqualTo(options.getNumRecords());
+    rows.apply(
+            MapElements.into(TypeDescriptors.lists(TypeDescriptors.strings()))
+                .via(row -> Arrays.asList(row.toString())))
+        .apply(
+            FileIO.<List<String>>write()
+                .via(new CSVSink(Arrays.asList("key", "Field0", "Field1", "Field2")))
+                .to("./")
+                .withPrefix("out")
+                .withSuffix(".csv"));
 
     p.run().waitUntilFinish();
 
@@ -333,8 +422,8 @@ class SpannerEmulatorPopulator {
     }
   }
 
-  public static void main(String[] args) throws ExecutionException, InterruptedException {
-
+  public static void main(String[] args)
+      throws ExecutionException, InterruptedException, IOException {
     SpannerPipelineOptions options =
         PipelineOptionsFactory.fromArgs(args).withValidation().as(SpannerPipelineOptions.class);
 
