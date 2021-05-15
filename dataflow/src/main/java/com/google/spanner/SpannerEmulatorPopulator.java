@@ -71,9 +71,8 @@ import org.slf4j.LoggerFactory;
  * as follows:
  * <code>
  * mvn compile exec:java -Dexec.mainClass=com.google.spanner.SpannerEmulatorPopulator -Dexec.args="
- * --projectId=test-project --endpoint=http://localhost:9010 --instanceId=test-instance --createDatabase=true --databaseIdPrefix=db-
- *  --databaseUniqueId=inbound --table=users --runImport=true --runExport=true --numRecords=100000 --numWorkers=1
- *  --maxNumWorkers=1 --runner=DirectRunner"
+ * --projectId=test-project --endpoint=http://localhost:9010 --instanceId=test-instance --createDatabase=true
+ * --table=users --runImport=true --runExport=true --numRecords=100000 --numWorkers=1 --maxNumWorkers=1 --runner=DirectRunner"
  * </code>
  * The SPANNER_EMULATOR_HOST environment variable must be set to the emulator address and
  * port (default: http://localhost:9010).
@@ -137,13 +136,13 @@ class SpannerEmulatorPopulator {
 
     @Description("Database prefix to write to in Spanner")
     @Validation.Required
-    @Default.String("testdb")
+    @Default.String("db-")
     String getDatabaseIdPrefix();
     void setDatabaseIdPrefix(String databaseIdPrefix);
 
     @Description("Database unique ID to write to in Spanner")
     @Validation.Required
-    @Default.String("1234567890abcdef")
+    @Default.String("test")
     String getDatabaseUniqueId();
     void setDatabaseUniqueId(String databaseUniqueId);
 
