@@ -1,4 +1,10 @@
-# Quickstart guide:
+# Example code for using the Cloud Spanner Emulator
+
+## <a href="src/main/java/com/google/cloud/SpannerSample.java">SpannerSample.java</a>
+
+A simple command line application that can interact with the emulator.
+
+### Quickstart guide:
 
 1. Set the emulator host environment variable:  
   export SPANNER_EMULATOR_HOST=localhost:9010
@@ -7,14 +13,14 @@
 3. Run the Spanner samples:  
   java -jar java-samples-1.0-SNAPSHOT.jar \<operation\> \<instance\> \<database\>
   
-## Notes:
+### Notes:
   - Default project: "test-project"
   - Default instance: "test-instance"
   - Default database: "test-database"
   - The docker image will create the above instance and database by default. This can be changed by editing the 
     start_emulator_with_instance_and_database.sh file.
 
-## List of Sample Operations (\<operation\> \<instance\> \<database\>):  
+### List of Sample Operations (\<operation\> \<instance\> \<database\>):  
 ```
     createdatabase my-instance example-db  
     write my-instance example-db  
@@ -70,3 +76,11 @@
     querywithqueryoptions my-instance example-db  
 ```
 
+## <a href="src/main/java/com/google/cloud/testing/SpannerEmulator.java">testing/SpannerEmulator.java</a>
+
+A Junit ClassRule that can be used on Linux systems to automatically start
+the emulator and cleanly shut it down during unit tests. 
+
+See the class javadoc, and 
+<a href="src/test/java/com/google/cloud/SampleEmulatorTest.java">SampleEmulatorTest.java</a>
+for example usage.
